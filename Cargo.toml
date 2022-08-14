@@ -2,6 +2,11 @@
 name = "tracing-opentelemetry-fmt"
 version = "0.0.1"
 edition = "2021"
+description = "Add opentelemetry trace.id and span.id to `FmtLayer` of tracing-subscriber"
+repository = "https://github.com/fortime/tracing-opentelemetry-fmt"
+license-file = "LICENSE"
+keywords = ["tracing", "opentelemetry", "log"]
+categories = ["development-tools::debugging"]
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
