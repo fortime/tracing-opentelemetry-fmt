@@ -9,7 +9,7 @@ Implement a `Layer` of `tracing-subscriber` which combines a `OpentelmetryLayer`
 ## Examples
 
 ```
-use std::io::{self, Write};
+use std::io;
 
 use opentelemetry::sdk::export::trace::stdout;
 use tracing_subscriber::{

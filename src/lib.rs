@@ -8,7 +8,7 @@
 //! ## Examples
 //!
 //! ```
-//! use std::io::{self, Write};
+//! use std::io;
 //!
 //! use opentelemetry::sdk::export::trace::stdout;
 //! use tracing_subscriber::{
@@ -62,6 +62,7 @@ use tracing_subscriber::{
 pub struct OpenTelemetryFmtLayerBuilder<S, T1, N2, E2, W2> {
     opentelemetry_layer: OpenTelemetryLayer<S, T1>,
     fmt_layer: FmtLayer<S, N2, E2, W2>,
+    field_names: &'static [&'static str; 2],
 }
 
 impl<S, T1, N2, E2, W2> OpenTelemetryFmtLayerBuilder<S, T1, N2, E2, W2> {
@@ -72,7 +73,13 @@ impl<S, T1, N2, E2, W2> OpenTelemetryFmtLayerBuilder<S, T1, N2, E2, W2> {
         Self {
             opentelemetry_layer,
             fmt_layer,
+            field_names: &["trace.id", "span.id"],
         }
+    }
+
+    pub fn with_field_names(mut self, field_names: &'static [&'static str; 2]) -> Self {
+        self.field_names = field_names;
+        self
     }
 }
 
@@ -90,14 +97,19 @@ where
         let Self {
             opentelemetry_layer,
             fmt_layer,
+            field_names,
         } = self;
-        let opentelemetry_fmt_layer = OpenTelemetryFmtLayer { fmt_layer };
+        let opentelemetry_fmt_layer = OpenTelemetryFmtLayer {
+            fmt_layer,
+            field_names,
+        };
         opentelemetry_layer.and_then(opentelemetry_fmt_layer)
     }
 }
 
 pub struct OpenTelemetryFmtLayer<S, N2, E2, W2> {
     fmt_layer: FmtLayer<S, N2, E2, W2>,
+    field_names: &'static [&'static str; 2],
 }
 
 impl<S, N2, E2, W2> Layer<S> for OpenTelemetryFmtLayer<S, N2, E2, W2>
@@ -159,14 +171,14 @@ where
 
         if let Some(ids) = ids {
             let field_set = FieldSet::new(
-                &["trace.id", "span.id"],
+                self.field_names,
                 ctx.metadata(id)
                     .expect("Metadata not found, this is a bug")
                     .callsite(),
             );
             let mut it = field_set.iter();
             let trace_field = it.next().expect("Trace field not found, this is a bug");
-            let span_field = it.next().expect("Trace field not found, this is a bug");
+            let span_field = it.next().expect("Span field not found, this is a bug");
             let values = [
                 (&trace_field, Some(&ids.0 as &dyn Value)),
                 (&span_field, Some(&ids.1 as &dyn Value)),
@@ -196,4 +208,42 @@ where
 
 #[cfg(test)]
 mod tests {
+    use std::io::{self, Write};
+
+    use opentelemetry::sdk::export::trace::stdout;
+    use tracing_subscriber::{
+        fmt::{self, format::FmtSpan},
+        layer::SubscriberExt,
+        util::SubscriberInitExt,
+    };
+
+    use super::*;
+
+    #[test]
+    fn test_with_field_names() {
+        let fmt_layer = fmt::layer()
+            .with_thread_ids(true)
+            .with_target(true)
+            .with_span_events(FmtSpan::FULL);
+        let tracer = stdout::new_pipeline()
+            .with_writer(io::sink())
+            .install_simple();
+        let opentelemetry_layer = tracing_opentelemetry::layer()
+            .with_exception_field_propagation(true)
+            .with_threads(true)
+            .with_tracer(tracer);
+
+        let opentelemetry_fmt_layer =
+            OpenTelemetryFmtLayerBuilder::new(opentelemetry_layer, fmt_layer)
+                .with_field_names(&["custom.trace.id", "custom.span.id"])
+                .build();
+        tracing_subscriber::registry()
+            .with(opentelemetry_fmt_layer)
+            .try_init()
+            .expect("It should be successful");
+
+        tracing::info_span!("span1").in_scope(|| {
+            tracing::info!("in span1");
+        });
+    }
 }
